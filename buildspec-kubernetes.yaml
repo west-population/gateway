@@ -39,8 +39,62 @@ phases:
       - kubectl config set-credentials admin --token="$KUBE_TOKEN"
       - kubectl config set-context default --cluster=k8s --user=admin
       - kubectl config use-context default
-      - kubectl apply -f ./kubernetes/service.yaml
-      - kubectl apply -f ./kubernetes/deployment.yml
+      - |
+          cat <<EOF | kubectl apply -f -
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: gateway
+            labels:
+              app: gateway
+          spec:
+            ports:
+              - port: 8080
+                targetPort: 8080
+            selector:
+              app: gateway
+            type: LoadBalancer
+          EOF
+      - |
+          cat  <<EOF | kubectl apply -f -
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: gateway
+            labels:
+              app: gateway
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: gateway
+            template:
+              metadata:
+                labels:
+                  app: gateway
+              spec:
+                containers:
+                  - name: gateway
+                    image: $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$_PROJECT_NAME:$CODEBUILD_RESOLVED_SOURCE_VERSION
+                    ports:
+                      - containerPort: 8080
+                    readinessProbe:
+                      httpGet:
+                        path: /actuator/health
+                        port: 8080
+                      initialDelaySeconds: 10
+                      timeoutSeconds: 2
+                      periodSeconds: 5
+                      failureThreshold: 10
+                    livenessProbe:
+                      httpGet:
+                        path: /actuator/health
+                        port: 8080
+                      initialDelaySeconds: 120
+                      timeoutSeconds: 2
+                      periodSeconds: 5
+                      failureThreshold: 5
+          EOF
 
 cache:
  paths:
